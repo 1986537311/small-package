@@ -1,40 +1,42 @@
-name: Build ImmortalWrt 25.12 x86_64
+name: Build OpenWrt 25.12.4 x86_64
 on:
   workflow_dispatch:
 env:
   OPENWRT_BRANCH: openwrt-25.12
-  IMMORTALWRT_REPO: immortalwrt/immortalwrt
+  OPENWRT_REPO: openwrt/openwrt
   TARGET: x86/64
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: 安装依赖
+      - name: 安装编译依赖
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib gettext git libncurses-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget zstd
-      - name: 克隆ImmortalWrt源码
+      - name: 克隆OpenWrt官方源码 openwrt-25.12
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.IMMORTALWRT_REPO }}
+          repository: ${{ env.OPENWRT_REPO }}
           branch: ${{ env.OPENWRT_BRANCH }}
-          path: immortalwrt
-      - name: 导入small-package插件源
+          path: openwrt
+      - name: 单独拉取 nanohatoled 插件（仅复制单个插件，规避大量依赖冲突）
         run: |
-          cd immortalwrt
-          echo "src-git small https://github.com/1986537311/small-package.git" >> feeds.conf.default
-          ./scripts/feeds update -a
-          ./scripts/feeds install nanohatoled
-      - name: 生成基础配置
+          cd openwrt/package
+          git clone https://github.com/1986537311/small-package.git tmp-plugin
+          cp -r tmp-plugin/nanohatoled ./
+          rm -rf tmp-plugin
+      - name: 生成基础配置（关闭交互式终端，解决unknown terminal报错）
         run: |
-          cd immortalwrt
+          cd openwrt
+          export TERM=dumb
           make ${{ env.TARGET }}.defconfig
-          # 如需自定义配置，可以在这里追加scripts/config指令
-      - name: 开始编译固件
+          # 启用 nanohatoled
+          ./scripts/config --set CONFIG_PACKAGE_nanohatoled=y
+      - name: 编译固件镜像
         run: |
-          cd immortalwrt
+          cd openwrt
           make -j$(nproc)
-      - name: 上传固件产物
+      - name: 上传编译好的固件
         uses: actions/upload-artifact@v4
         with:
-          path: immortalwrt/bin/targets/${{ env.TARGET }}/*.img
+          path: openwrt/bin/targets/${{ env.TARGET }}/*.img
