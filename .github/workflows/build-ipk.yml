@@ -1,0 +1,35 @@
+name: Build ImmortalWrt 25.12 IPK
+on:
+  workflow_dispatch: #仅手动启动，无多余开关
+env:
+  TARGET: x86_64
+  SDK_URL: https://mirrors.ustc.edu.cn/immortalwrt/releases/25.12-SNAPSHOT/targets/x86/64/immortalwrt-sdk-25.12-SNAPSHOT-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 下载SDK（中科大镜像，提速防超时）
+        run: |
+          wget ${{ env.SDK_URL }} -O sdk.tar.zst
+          apt update && apt install zstd -y
+          tar -I zstd -xf sdk.tar.zst
+          mv immortalwrt-sdk-* sdk
+      - name: Checkout small-package源码
+        uses: actions/checkout@v4
+        with:
+          path: sdk/package/small-package
+      - name: 编译插件
+        run: |
+          cd sdk
+          echo "src-link small-package package/small-package" >> feeds.conf.default
+          ./scripts/feeds update small-package
+          ./scripts/feeds install -a -p small-package
+          make defconfig
+          # 只编译nanohatoled（你需要的插件）
+          make package/nanohatoled/compile -j$(nproc)
+          # 想要批量全部插件就注释上面，启用下面一行
+          # make -j$(nproc)
+      - name: 上传编译产物
+        uses: actions/upload-artifact@v4
+        with:
+          path: sdk/bin/packages/x86_64/small-package/*.ipk
